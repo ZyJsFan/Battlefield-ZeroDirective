@@ -48,12 +48,18 @@ public class DeploymentController : MonoBehaviour
     // 只有当玩家阵营确定（分配完）后，这里才被调用一次
     private void OnLocalFactionReady(Faction f)
     {
+        Debug.Log($"[DeploymentController] OnLocalFactionReady called, faction = {f}");
         // 拿到本地玩家实例
         localPlayer = NetworkClient.connection.identity.GetComponent<GetReady>();
+
+
+        if (localPlayer == null)
+            Debug.LogError("[DeploymentController] localPlayer is still null!");
 
         // 根据阵营选用正确的 Prefab 列表
         myPrefabs = (f == Faction.Allies) ? allyPrefabs : axisPrefabs;
 
+        Debug.Log($"[DeploymentController] myPrefabs count = {myPrefabs.Count}");
         // 生成按钮到 Content 里，一旦面板Show才可见
         BuildUI();
     }
@@ -104,8 +110,11 @@ public class DeploymentController : MonoBehaviour
             // btnGO.GetComponent<Image>().sprite = someIconList[idx];
 
             itemButtons.Add(btn);
+            Debug.Log($"[DeploymentController] Instantiated button idx={i}, prefab={myPrefabs[i].name}");
         }
 
+
+        Debug.Log($"[DeploymentController] contentPanel.childCount = {contentPanel.childCount}");
         // 默认高亮第 0 个
         if (myPrefabs.Count > 0)
             SelectIndex(0);
@@ -138,13 +147,24 @@ public class DeploymentController : MonoBehaviour
     // 发起 Spawn 命令
     private void TrySpawnSelectedPrefab()
     {
-        if (localPlayer == null) return;
+        if (localPlayer == null) {
+            Debug.LogError("[DeploymentController] localPlayer is null in TrySpawnSelectedPrefab!");
+
+            return;
+        }
+        Debug.Log($"[DeploymentController] localPlayer.netId = {localPlayer.netId}, isLocalPlayer = {localPlayer.isLocalPlayer}");
+
 
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
         if (Physics.Raycast(ray, out var hit, 1000f, LayerMask.GetMask("Ground")))
         {
             // 调用 GetReady 中的 RequestSpawn 方法
+            Debug.Log($"[DeploymentController] Raycast hit {hit.collider.name} at {hit.point}");
             localPlayer.RequestSpawn(selectedIndex, hit.point);
+        }
+        else
+        {
+            Debug.LogWarning("[DeploymentController] Raycast did not hit Ground layer");
         }
     }
 }

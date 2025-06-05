@@ -81,23 +81,39 @@ public class GetReady : NetworkBehaviour
     // 这段是新增：由 UI 调用，告诉服务器“我要部署第 index 个单位到 position”
     public void RequestSpawn(int prefabIndex, Vector3 spawnPos)
     {
-        if (!isLocalPlayer) return;
+        Debug.Log($"[GetReady] RequestSpawn called on netId={netId}, isLocalPlayer={isLocalPlayer}, prefabIndex={prefabIndex}, spawnPos={spawnPos}");
+        if (!isLocalPlayer) {
+            Debug.LogError("[GetReady] RequestSpawn called on non-local player!");
+            return;
+        } 
         CmdRequestSpawn(prefabIndex, spawnPos);
     }
 
     [Command]
     private void CmdRequestSpawn(int prefabIndex, Vector3 spawnPos)
     {
+        Debug.Log($"[GetReady] CmdRequestSpawn() on server, netId={netId}, faction={faction}, prefabIndex={prefabIndex}, spawnPos={spawnPos}");
         // 服务器端再做一次阵营+索引校验
         var validList = (faction == Faction.Allies) ?
                           DeploymentController.instance.allyPrefabs :
                           DeploymentController.instance.axisPrefabs;
-        if (prefabIndex < 0 || prefabIndex >= validList.Count)
-            return;
 
+        Debug.Log($"[GetReady] validList count = {validList.Count}");
+        if (prefabIndex < 0 || prefabIndex >= validList.Count) { 
+            Debug.LogError("[GetReady] CmdRequestSpawn: prefabIndex out of range!");
+        return;
+    }
         // 在服务器上实例化并通知客户端
-        var go = Instantiate(validList[prefabIndex], spawnPos, Quaternion.identity);
+        var prefabGo = validList[prefabIndex];
+        Debug.Log($"[GetReady] CmdRequestSpawn: Instantiating {prefabGo.name} at {spawnPos}");
+        var go = Instantiate(prefabGo, spawnPos, Quaternion.identity);
+
+        var sel = go.GetComponent<Selectable>();
+        if (sel != null)
+            sel.InitializeOwner(connectionToClient.identity.netId);
+
         NetworkServer.Spawn(go, connectionToClient);
+        Debug.Log($"[GetReady] CmdRequestSpawn: Spawned {go.name} with netId={go.GetComponent<NetworkIdentity>().netId}");
     }
 
 
