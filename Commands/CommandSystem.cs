@@ -11,11 +11,24 @@ public class CommandSystem : NetworkBehaviour
     [Client]
     private void HandleCommand(RaycastHit hit)
     {
-        // only the local player should fire commands
+        // 1. 首先检查这段日志，确认 HandleCommand 是在本地玩家那边被调用，并查看选中数量
+        if (NetworkClient.connection != null && NetworkClient.connection.identity != null)
+        {
+            uint localNetId = NetworkClient.connection.identity.netId;
+            int selectedCount = SelectionProcessor.Instance?.CurrentlySelected?.Count ?? 0;
+            Debug.Log($"[CommandSystem] HandleCommand called on localNetId={localNetId}, SelectedCount={selectedCount}");
+        }
+        else
+        {
+            Debug.LogWarning("[CommandSystem] HandleCommand: NetworkClient.connection or identity is null!");
+        }
+
+        // 只有本地玩家才真正执行命令
         if (!isLocalPlayer) return;
 
         Debug.Log($"[CommandSystem] → HandleCommand invoked. Hit `{hit.collider.name}` at {hit.point}");
 
+        // 拿到当前选中的单位列表
         var selected = SelectionProcessor.Instance?.CurrentlySelected;
         if (selected == null || selected.Count == 0)
         {
@@ -24,7 +37,7 @@ public class CommandSystem : NetworkBehaviour
         }
         Debug.Log($"[CommandSystem] → CurrentlySelected count = {selected.Count}");
 
-        // gather their netIds
+        // 收集所有选中单位的 netId，用于传给服务器
         var unitNetIds = selected
             .Select(s => s.GetComponent<NetworkIdentity>())
             .Where(ni => ni != null)
@@ -41,6 +54,10 @@ public class CommandSystem : NetworkBehaviour
             {
                 Debug.Log($"[CommandSystem] → Issuing attack RPC to server on target {targetNi.netId}");
                 CmdIssueAttack(unitNetIds, targetNi.netId);
+            }
+            else
+            {
+                Debug.LogWarning("[CommandSystem] → Hit an object tagged ‘Enemy’ but without NetworkIdentity!");
             }
         }
         else
@@ -60,7 +77,18 @@ public class CommandSystem : NetworkBehaviour
             {
                 var uc = go.GetComponent<UnitController>();
                 if (uc != null)
+                {
+                    Debug.Log($"[CommandSystem] [Server] – Moving unit {go.name} (netId={id}) to {dest}");
                     uc.EnqueueCommand(new MoveCommand(dest));
+                }
+                else
+                {
+                    Debug.LogWarning($"[CommandSystem] [Server] Unit with netId={id} has no UnitController!");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"[CommandSystem] [Server] Could not find spawned object with netId={id}");
             }
         }
     }
@@ -69,7 +97,11 @@ public class CommandSystem : NetworkBehaviour
     private void CmdIssueAttack(List<uint> unitNetIds, uint targetNetId)
     {
         Debug.Log($"[CommandSystem] [Server] CmdIssueAttack for {unitNetIds.Count} units on target {targetNetId}");
-        if (!NetworkServer.spawned.TryGetValue(targetNetId, out var targetGo)) return;
+        if (!NetworkServer.spawned.TryGetValue(targetNetId, out var targetGo))
+        {
+            Debug.LogWarning($"[CommandSystem] [Server] Could not find target object with netId={targetNetId}");
+            return;
+        }
 
         var targetObj = targetGo.gameObject;
         foreach (uint id in unitNetIds)
@@ -78,7 +110,18 @@ public class CommandSystem : NetworkBehaviour
             {
                 var uc = go.GetComponent<UnitController>();
                 if (uc != null)
+                {
+                    Debug.Log($"[CommandSystem] [Server] – Attacking from unit {go.name} (netId={id}) to target {targetObj.name}");
                     uc.EnqueueCommand(new AttackCommand(targetObj));
+                }
+                else
+                {
+                    Debug.LogWarning($"[CommandSystem] [Server] Unit with netId={id} has no UnitController for attack!");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"[CommandSystem] [Server] Could not find spawned attacker with netId={id}");
             }
         }
     }

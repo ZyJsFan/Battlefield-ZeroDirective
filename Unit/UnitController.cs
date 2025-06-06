@@ -34,11 +34,13 @@ public class UnitController : NetworkBehaviour
     [Server]
     public void StartMove(Vector3 dest)
     {
-        Debug.Log($"[UnitController:{name}] StartMove → {dest}");
+        Debug.Log($"[UnitController:{name}] StartMove called on server? {isServer}, hasAuth? {authority}, agent.isOnNavMesh? {agent.isOnNavMesh} → dest={dest}");
         combat.CancelAttack();
         agent.isStopped = false;
-        agent.SetDestination(dest);
+        bool success = agent.SetDestination(dest);
+        Debug.Log($"[UnitController:{name}] agent.SetDestination returned {success}, pathStatus={agent.pathStatus}");
     }
+
 
     /// <summary>
     /// 服务器端开始攻击

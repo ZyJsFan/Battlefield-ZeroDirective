@@ -9,6 +9,7 @@ public class MoveCommand : ICommand
 
     public void Execute(UnitController unit)
     {
+        Debug.Log($"[MoveCommand] Execute called on unit={unit.name}, isServer={unit.isServer}, hasAuthority={unit.authority}");
         unit.StartMove(TargetPosition);
     }
 }
