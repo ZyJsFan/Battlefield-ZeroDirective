@@ -79,4 +79,10 @@ public class Selectable : NetworkBehaviour
             }
         }
     }
+
+
+    void OnDestroy()
+    {
+        Debug.Log($"[OnDestroy] {gameObject.name} destroyed on {(isServer ? "Server" : "Client")}, netId={(GetComponent<NetworkIdentity>()?.netId.ToString() ?? "n/a")}");
+    }
 }

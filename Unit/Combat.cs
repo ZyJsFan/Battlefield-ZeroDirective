@@ -42,6 +42,10 @@ public class Combat : MonoBehaviour
         if (target == null) return;
 
         float dist = Vector3.Distance(transform.position, target.transform.position);
+        // 新增：每帧都打印距离、范围、和自上次攻击以来的间隔
+        float since = Time.time - lastAttackTime;
+        Debug.Log($"[Combat] Checking target: dist={dist:F2}, range={range}, sinceLast={since:F2}s");
+
         if (dist > range)
         {
             // 跟踪目标
@@ -50,19 +54,20 @@ public class Combat : MonoBehaviour
         }
         else
         {
-            // 停止移动并面向目标
             agent.isStopped = true;
-            Vector3 dir = (target.transform.position - transform.position).normalized;
-            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(dir), Time.deltaTime * 10f);
 
-            // 攻击冷却
-            if (Time.time - lastAttackTime >= attackInterval)
+            // 新增：打印是否满足冷却条件
+            Debug.Log($"[Combat] In range. Cooldown check: sinceLast={since:F2}s >= interval={attackInterval:F2}s ? {since >= attackInterval}");
+
+            if (since >= attackInterval)
             {
-                // 假设目标有一个 Health 组件
-                //var health = target.GetComponent<Health>();
-                //if (health != null)
-                //    health.TakeDamage(damage);
-
+                Debug.Log($"[Combat] Cooldown passed, attacking now");
+                var health = target.GetComponent<Health>();
+                if (health != null)
+                {
+                    Debug.Log($"[Combat] Dealing {damage} to {target.name} (hp was {health.CurrentHP})");
+                    health.TakeDamage(damage);
+                }
                 lastAttackTime = Time.time;
             }
         }
