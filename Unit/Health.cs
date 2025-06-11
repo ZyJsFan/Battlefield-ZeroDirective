@@ -3,31 +3,32 @@ using UnityEngine;
 
 public class Health : NetworkBehaviour
 {
-    [SyncVar]
+    [SyncVar(hook = nameof(OnHpChanged))]
     private float hp;
 
     [SerializeField]
     public float maxHp = 100f;
 
-
     public float CurrentHP => hp;
 
-    void Start()
+    // 服务器端初始化血量
+    public override void OnStartServer()
     {
+        base.OnStartServer();
         hp = maxHp;
     }
 
     [Server]
     public void TakeDamage(float amount)
     {
-        Debug.Log($"[Health] Before damage: {gameObject.name} hp={hp}");
-        hp -= amount;
-        Debug.Log($"[Health] AFTER damage: {gameObject.name} hp={hp}");
-
+        hp = Mathf.Max(0, hp - amount);
         if (hp <= 0f)
-        {
-            Debug.Log($"[Health] {gameObject.name} died");
             NetworkServer.Destroy(gameObject);
-        }
+    }
+
+    // SyncVar 钩子：血量每次改变都会回调
+    private void OnHpChanged(float oldHp, float newHp)
+    {
+        // nothing here or call to UI if needed
     }
 }
