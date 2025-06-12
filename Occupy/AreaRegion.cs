@@ -10,7 +10,8 @@ public class AreaRegion : NetworkBehaviour
     public float recaptureRate = 15f;
     public float maxProgress = 100f;
 
-
+    // ? 新增：监听进度变化的事件
+    public event Action<float> OnProgressChanged;
 
     public event Action<AreaRegion, Faction> OnCaptured;
     public event Action<AreaRegion, Faction> OnLost;
@@ -21,13 +22,14 @@ public class AreaRegion : NetworkBehaviour
     HashSet<Selectable> inAllies = new();
     HashSet<Selectable> inAxis = new();
 
+    public float Progress => progress;
+
     void OnTriggerEnter(Collider other)
     {
-        if (!isServer) return;   // 只在服务器端统计
+        if (!isServer) return;
         if (!other.TryGetComponent<Selectable>(out var sel)) return;
 
-        var ni = sel.GetComponent<NetworkIdentity>();
-        var conn = ni.connectionToClient;
+        var conn = sel.GetComponent<NetworkIdentity>().connectionToClient;
         var faction = GameFlowManager.Instance.GetFactionForConnection(conn);
 
         if (faction == Faction.Allies)
@@ -35,27 +37,23 @@ public class AreaRegion : NetworkBehaviour
             inAllies.Add(sel);
             Debug.Log($"[AreaRegion:{name}] +Allies {sel.name} → Att={inAllies.Count}, Def={inAxis.Count}");
         }
-        else if (faction == Faction.Axis) {
+        else if (faction == Faction.Axis)
+        {
             inAxis.Add(sel);
             Debug.Log($"[AreaRegion:{name}] +Axis {sel.name} → Att={inAllies.Count}, Def={inAxis.Count}");
-        } 
+        }
     }
 
     void OnTriggerExit(Collider other)
     {
         if (!isServer) return;
-        if (other.TryGetComponent<Selectable>(out var sel)) {
+        if (other.TryGetComponent<Selectable>(out var sel))
+        {
             if (inAllies.Remove(sel))
-            {
                 Debug.Log($"[AreaRegion:{name}] –Allies {sel.name} → Att={inAllies.Count}, Def={inAxis.Count}");
-            }
             if (inAxis.Remove(sel))
-            {
                 Debug.Log($"[AreaRegion:{name}] –Axis {sel.name} → Att={inAllies.Count}, Def={inAxis.Count}");
-            }
         }
-
-
     }
 
     /// <summary>
@@ -67,13 +65,24 @@ public class AreaRegion : NetworkBehaviour
         int def = inAxis.Count;
 
         Debug.Log($"[AreaRegion:{name}] Before: Att={atk}, Def={def}, Progress={progress:F1}");
-        if (atk > def) progress += captureRate * dt;
-        else if (def > atk) progress -= recaptureRate * dt;
 
-        progress = Mathf.Clamp(progress, 0f, maxProgress);
+        float delta = (atk > def)
+            ? captureRate * dt
+            : (def > atk ? -recaptureRate * dt : 0f);
+        float newProgress = Mathf.Clamp(progress + delta, 0f, maxProgress);
+
+        // ? 触发进度更新
+        if (Mathf.Abs(newProgress - progress) > 0.01f)
+        {
+            progress = newProgress;
+            OnProgressChanged?.Invoke(progress);
+        }
+        else
+        {
+            progress = newProgress;
+        }
 
         Debug.Log($"[AreaRegion:{name}] After:  Att={atk}, Def={def}, Progress={progress:F1}");
-
 
         if (!wasCaptured && progress >= maxProgress)
         {

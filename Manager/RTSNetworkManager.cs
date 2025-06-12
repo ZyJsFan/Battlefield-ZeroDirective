@@ -18,8 +18,7 @@ public class RTSNetworkManager : NetworkManager
     public override void OnStartServer()
     {
         base.OnStartServer();
-        // （可选）初始化 GameFlowManager 单例
-        GameFlowManager.Instance.InitializeOnServer();
+
     }
 
     public override void OnServerAddPlayer(NetworkConnectionToClient conn)

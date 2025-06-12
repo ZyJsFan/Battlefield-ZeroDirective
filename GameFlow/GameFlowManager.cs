@@ -1,4 +1,4 @@
-using Mirror;
+ï»¿using Mirror;
 using UnityEngine;
 using System;
 using System.Linq;
@@ -8,20 +8,17 @@ public class GameFlowManager : NetworkBehaviour
 {
     public static GameFlowManager Instance { get; private set; }
 
-    private readonly List<GetReady> players = new List<GetReady>();
-
     public static event Action OnGameStartEvent;
+    public static event Action<string> OnLargeAreaCapturedUI;
 
-    [Header("ÇøÓòÕù¶áÉèÖÃ")]
-    public AreaRegion[] contestedRegions;
-    public int alliesWinCount = 2;
-    public int axisWinCount = 2;
+    [Header("æŒ‰é¡ºåºæ’åˆ—çš„æ‰€æœ‰å¤§åŒºåŸŸ")]
+    public LargeArea[] largeAreas;
 
-    // ¡û ĞÂÔö£º¼ÇÂ¼Ã¿¸ö¿Í»§¶ËÊôÓÚÄÄ¸öÕóÓª
-    private Dictionary<NetworkConnectionToClient, Faction> connFaction =
-        new Dictionary<NetworkConnectionToClient, Faction>();
+    private readonly List<GetReady> players = new List<GetReady>();
+    private Dictionary<NetworkConnectionToClient, Faction> connFaction = new();
 
-    int alliesCaptured = 0, axisCaptured = 0;
+    // å½“å‰è¿›è¡Œåˆ°ç¬¬å‡ ä¸ªå¤§åŒº
+    public int currentLargeIndex = 0;
 
     void Awake()
     {
@@ -29,7 +26,6 @@ public class GameFlowManager : NetworkBehaviour
         else Destroy(gameObject);
     }
 
-    // ÓÉ RTSNetworkManager µ÷ÓÃ
     [Server]
     public void RegisterPlayer(GetReady p)
     {
@@ -47,71 +43,68 @@ public class GameFlowManager : NetworkBehaviour
     [Server]
     void StartGame()
     {
+        // éšæœºåˆ†æ´¾é˜µè¥â€¦
         var rnd = new System.Random();
         var shuffled = players.OrderBy(_ => rnd.Next()).ToList();
         shuffled[0].faction = Faction.Allies;
         shuffled[1].faction = Faction.Axis;
+        foreach (var p in players)
+            connFaction[p.connectionToClient] = p.faction;
+
         RpcGameStart();
 
-        foreach (var player in players) // players: List<GetReady>
-        {
-            var conn = player.connectionToClient;
-            connFaction[conn] = player.faction;
-        }
-
-        // ×¢²áÇøÓòÊÂ¼ş
-        foreach (var r in contestedRegions)
-        {
-            r.OnCaptured += HandleCaptured;
-            r.OnLost += HandleLost;
-        }
+        // â€”â€” æ–°ï¼šè®¢é˜…ç¬¬ä¸€ä¸ªå¤§åŒº â€”â€” 
+        if (largeAreas != null && largeAreas.Length > 0)
+            SubscribeLargeArea(0);
     }
 
     [ClientRpc]
     void RpcGameStart()
     {
-        Debug.Log("[GameFlowManager] Game Started!");
         OnGameStartEvent?.Invoke();
     }
 
-    // Èç¹ûĞèÒª£¬GameFlowManager Ò²¿ÉÒÔÔÚ OnStartServer ×¢²á×ÔÉíµ½ RTSNetworkManager
-    public void InitializeOnServer() { /* optional */ }
-
-
-
-
     [Server]
-    public Faction GetFactionForConnection(NetworkConnectionToClient conn)
+    void SubscribeLargeArea(int idx)
     {
-        return connFaction.TryGetValue(conn, out var f) ? f : Faction.None;
+        largeAreas[idx].OnFullyCaptured += HandleLargeAreaCaptured;
     }
 
     [Server]
-    void HandleCaptured(AreaRegion region, Faction byFaction)
+    void HandleLargeAreaCaptured(LargeArea la)
     {
-        if (byFaction == Faction.Allies) alliesCaptured++;
-        else axisCaptured++;
-        CheckVictory();
+        la.OnFullyCaptured -= HandleLargeAreaCaptured;
+
+        bool isLast = (currentLargeIndex == largeAreas.Length - 1);
+        RpcFireOnLargeAreaCaptured(la.name);
+
+        if (!isLast)
+        {
+            currentLargeIndex++;
+            SubscribeLargeArea(currentLargeIndex);
+        }
+        else
+        {
+            RpcGameOver(Faction.Allies);
+        }
     }
-    [Server]
-    void HandleLost(AreaRegion region, Faction byFaction)
+
+    [ClientRpc]
+    void RpcFireOnLargeAreaCaptured(string areaName)
     {
-        if (byFaction == Faction.Allies) alliesCaptured--;
-        else axisCaptured--;
-        CheckVictory();
-    }
-    [Server]
-    void CheckVictory()
-    {
-        if (alliesCaptured >= alliesWinCount) RpcGameOver(Faction.Allies);
-        else if (axisCaptured >= axisWinCount) RpcGameOver(Faction.Axis);
+        OnLargeAreaCapturedUI?.Invoke(areaName);
     }
 
     [ClientRpc]
     void RpcGameOver(Faction winner)
     {
         Debug.Log($"Game Over! Winner = {winner}");
-        // TODO: ÏÔÊ¾Ê¤Àû/Ê§°Ü UI
+        // TODO: ç»“æŸ UI
     }
 
+    [Server]
+    public Faction GetFactionForConnection(NetworkConnectionToClient conn)
+    {
+        return connFaction.TryGetValue(conn, out var f) ? f : Faction.None;
+    }
 }
