@@ -70,6 +70,7 @@ public class GetReady : NetworkBehaviour
         {
             Debug.Log($"[GetReady] Invoking OnLocalFactionReady for local player");
             MyFaction = newValue;
+            Debug.Log($"Check shunxu  faction = {MyFaction}");
             var readyUI = FindObjectOfType<ReadyButtonUI>();
             if (readyUI != null)
                 readyUI.gameObject.SetActive(false);

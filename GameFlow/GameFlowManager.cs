@@ -8,16 +8,16 @@ public class GameFlowManager : NetworkBehaviour
 {
     public static GameFlowManager Instance { get; private set; }
 
+    /// <summary>游戏开始事件，客户端 UI 订阅显示子区域面板</summary>
     public static event Action OnGameStartEvent;
+    /// <summary>大区完成事件，参数：大区名字</summary>
     public static event Action<string> OnLargeAreaCapturedUI;
 
     [Header("按顺序排列的所有大区域")]
     public LargeArea[] largeAreas;
 
-    private readonly List<GetReady> players = new List<GetReady>();
+    private readonly List<GetReady> players = new();
     private Dictionary<NetworkConnectionToClient, Faction> connFaction = new();
-
-    // 当前进行到第几个大区
     public int currentLargeIndex = 0;
 
     void Awake()
@@ -43,7 +43,18 @@ public class GameFlowManager : NetworkBehaviour
     [Server]
     void StartGame()
     {
-        // 随机分派阵营…
+
+        Debug.Log("[Server] StartGame: 重置所有大区和子区状态");
+           foreach (var la in largeAreas)
+               {
+            la.ResetState();
+                   foreach (var reg in la.subRegions)
+                reg.ResetState();
+               }
+
+
+
+        Debug.Log("[Server] StartGame: 分派阵营并启动");
         var rnd = new System.Random();
         var shuffled = players.OrderBy(_ => rnd.Next()).ToList();
         shuffled[0].faction = Faction.Allies;
@@ -52,8 +63,6 @@ public class GameFlowManager : NetworkBehaviour
             connFaction[p.connectionToClient] = p.faction;
 
         RpcGameStart();
-
-        // —— 新：订阅第一个大区 —— 
         if (largeAreas != null && largeAreas.Length > 0)
             SubscribeLargeArea(0);
     }
@@ -61,50 +70,47 @@ public class GameFlowManager : NetworkBehaviour
     [ClientRpc]
     void RpcGameStart()
     {
+        Debug.Log("[Client] RpcGameStart received");
         OnGameStartEvent?.Invoke();
     }
 
     [Server]
     void SubscribeLargeArea(int idx)
     {
+        Debug.Log($"[Server] SubscribeLargeArea idx={idx}");
         largeAreas[idx].OnFullyCaptured += HandleLargeAreaCaptured;
     }
 
     [Server]
     void HandleLargeAreaCaptured(LargeArea la)
     {
+        Debug.Log($"[Server] LargeArea {la.name} fully captured at idx={currentLargeIndex}");
         la.OnFullyCaptured -= HandleLargeAreaCaptured;
-
-        bool isLast = (currentLargeIndex == largeAreas.Length - 1);
         RpcFireOnLargeAreaCaptured(la.name);
 
+        bool isLast = (currentLargeIndex == largeAreas.Length - 1);
         if (!isLast)
         {
             currentLargeIndex++;
             SubscribeLargeArea(currentLargeIndex);
         }
-        else
-        {
-            RpcGameOver(Faction.Allies);
-        }
+        else RpcGameOver(Faction.Allies);
     }
 
     [ClientRpc]
     void RpcFireOnLargeAreaCaptured(string areaName)
     {
+        Debug.Log($"[Client] RpcFireOnLargeAreaCaptured received: {areaName}");
         OnLargeAreaCapturedUI?.Invoke(areaName);
     }
 
     [ClientRpc]
     void RpcGameOver(Faction winner)
     {
-        Debug.Log($"Game Over! Winner = {winner}");
-        // TODO: 结束 UI
+        Debug.Log($"[Client] RpcGameOver Winner = {winner}");
     }
 
     [Server]
     public Faction GetFactionForConnection(NetworkConnectionToClient conn)
-    {
-        return connFaction.TryGetValue(conn, out var f) ? f : Faction.None;
-    }
+        => connFaction.TryGetValue(conn, out var f) ? f : Faction.None;
 }

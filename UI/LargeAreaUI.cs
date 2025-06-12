@@ -1,14 +1,15 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 using UnityEngine.UI;
 using System;
 using System.Collections.Generic;
 using TMPro;
+using Mirror;
 
 public class LargeAreaUI : MonoBehaviour
 {
     public static LargeAreaUI Instance { get; private set; }
 
-    [Header("UI ÒıÓÃ")]
+    [Header("UI å¼•ç”¨")]
     public GameObject subRegionPanel;
     public GameObject rowPrefab;
     public RectTransform contentParent;
@@ -20,22 +21,17 @@ public class LargeAreaUI : MonoBehaviour
 
     void Awake()
     {
-        if (Instance != null && Instance != this)
-        {
-            Destroy(gameObject);
-            return;
-        }
+        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
 
-        // ÓÎÏ·¿ªÊ¼ºóÏÔÊ¾×ÓÇøÃæ°å²¢Éú³É½ø¶ÈÌõ
+        Debug.Log("[UI] Awake: è®¢é˜… OnGameStartEvent & OnLargeAreaCapturedUI");
         onGameStartHandler = () =>
         {
+            Debug.Log("[UI] OnGameStartEvent: æ˜¾ç¤ºé¢æ¿å¹¶æ„å»ºè¡Œ");
             subRegionPanel.SetActive(true);
             BuildSubRegionRows();
         };
         GameFlowManager.OnGameStartEvent += onGameStartHandler;
-
-        // ´óÇøÕ¼ÁìÍê³ÉÊ±ÌáÊ¾
         GameFlowManager.OnLargeAreaCapturedUI += OnLargeAreaCaptured;
     }
 
@@ -48,110 +44,36 @@ public class LargeAreaUI : MonoBehaviour
 
     void BuildSubRegionRows()
     {
-        // ¡ª¡ª DEBUG START ¡ª¡ª  
-        Debug.Log($"[UI] BuildSubRegionRows() called");
+        Debug.Log("[UI] BuildSubRegionRows called");
         var mgr = GameFlowManager.Instance;
-        Debug.Log($"[UI] GameFlowManager.Instance = {mgr}");
-        if (mgr == null)
+        if (mgr == null || mgr.largeAreas == null || mgr.largeAreas.Length == 0)
         {
-            Debug.LogError("[UI] GameFlowManager.Instance is null! È·±£³¡¾°ÖĞ¹ÒÁË GameFlowManager ²¢ÇÒÒÑ Awake");
+            Debug.LogError("[UI] largeAreas æœªé…ç½®æˆ–ä¸ºç©º");
             return;
         }
-
-        var areas = mgr.largeAreas;
-        Debug.Log($"[UI] largeAreas = {areas} (length = {(areas != null ? areas.Length.ToString() : "null")})");
-        if (areas == null || areas.Length == 0)
-        {
-            Debug.LogError("[UI] largeAreas Êı×éÎª¿Õ£¡ÇëÔÚ Inspector ÀïÅäÖÃ GameFlowManager.largeAreas");
-            return;
-        }
-
-        // Èç¹ûÄãÒÑ¸ÄÎª public ÊôĞÔ¶ÁÈ¡£¬Çë¸ÄÓÃ mgr.CurrentLargeIndex
-        int idx = 0;
-        try { idx = mgr.currentLargeIndex; }
-        catch { Debug.LogError("[UI] ÎŞ·¨¶ÁÈ¡ mgr.currentLargeIndex£¬Çë¸ÄÎª public »òÍ¨¹ıÊôĞÔ·ÃÎÊ"); }
+        int idx = mgr.currentLargeIndex;
         Debug.Log($"[UI] currentLargeIndex = {idx}");
-        if (idx < 0 || idx >= areas.Length)
+        if (idx < 0 || idx >= mgr.largeAreas.Length)
         {
-            Debug.LogError($"[UI] currentLargeIndex Ô½½ç (0~{areas.Length - 1})");
+            Debug.LogError("[UI] currentLargeIndex è¶Šç•Œ");
             return;
         }
 
-        var la = areas[idx];
-        Debug.Log($"[UI] Selected LargeArea = {la} (name = {la?.name})");
-        if (la == null)
+        var la = mgr.largeAreas[idx];
+        if (la == null || la.subRegions == null || la.subRegions.Length == 0)
         {
-            Debug.LogError("[UI] mgr.largeAreas[idx] ÊÇ null£¡");
-            return;
-        }
-        Debug.Log($"[UI] subRegions = {la.subRegions} (length = {(la.subRegions != null ? la.subRegions.Length.ToString() : "null")})");
-        if (la.subRegions == null || la.subRegions.Length == 0)
-        {
-            Debug.LogError("[UI] LargeArea.subRegions Î´ÅäÖÃ£¡");
+            Debug.LogError("[UI] subRegions æœªé…ç½®æˆ–ä¸ºç©º");
             return;
         }
 
-        Debug.Log($"[UI] contentParent = {contentParent}, rowPrefab = {rowPrefab}");
-        if (contentParent == null) Debug.LogError("[UI] contentParent Î´¸³Öµ£¡");
-        if (rowPrefab == null) Debug.LogError("[UI] rowPrefab Î´¸³Öµ£¡");
-        // ¡ª¡ª DEBUG END ¡ª¡ª  
-
-        // Çå¿Õ¾ÉĞĞ
         foreach (Transform t in contentParent) Destroy(t.gameObject);
         sliders.Clear();
 
-
-        // ÊµÀı»¯Ò»ĞĞ£¬ÓÃÀ´ debug
-        var go1 = Instantiate(rowPrefab, contentParent);
-        go1.name = "DEBUG_ROW";
-
-        // ´òÓ¡ËùÓĞ×Ó½ÚµãÃû³Æ
-        Debug.Log(">>> DEBUG ×Ó½ÚµãÁĞ±í of rowPrefab:");
-        for (int i = 0; i < go1.transform.childCount; i++)
-        {
-            Debug.Log($"    Child {i}: {go1.transform.GetChild(i).name}");
-        }
-
-        // ¼ì²é Label ½Úµã
-        var labelTf = go1.transform.Find("Label");
-        if (labelTf == null)
-        {
-            Debug.LogError(">>> ÕÒ²»µ½ÃûÎª 'Label' µÄ×Ó½Úµã£¬¼ì²éÔ¤ÖÆÌå²ã¼¶»òÃû³ÆÊÇ·ñÒ»ÖÂ");
-            return;
-        }
-        else Debug.Log("Label ÕÒµ½£¬¼ì²â×é¼ş¡­");
-
-        var txt = labelTf.GetComponent<TextMeshProUGUI>();
-        if (txt == null)
-        {
-            Debug.LogError(">>> 'Label' ÉÏÃ»ÓĞ Text ×é¼ş£¬¿ÉÄÜĞèÒª¸ÄÓÃ TextMeshProUGUI »òÕßÌí¼Ó Text");
-            return;
-        }
-
-        // ¼ì²é Slider ½Úµã
-        var sliderTf = go1.transform.Find("Slider");
-        if (sliderTf == null)
-        {
-            Debug.LogError(">>> ÕÒ²»µ½ÃûÎª 'Slider' µÄ×Ó½Úµã");
-            return;
-        }
-        else Debug.Log("Slider ÕÒµ½£¬¼ì²â×é¼ş¡­");
-
-        var sld = sliderTf.GetComponent<Slider>();
-        if (sld == null)
-        {
-            Debug.LogError(">>> 'Slider' ÉÏÃ»ÓĞ Slider ×é¼ş");
-            return;
-        }
-
-        // Èç¹ûÄÜ×ßµ½ÕâÀï£¬¾Í°Ñ go Ïú»Ù£¬ÏÂÃæÔÙÓÃÕı³£Âß¼­
-        Destroy(go1);
-
-
         currentAreaName = la.name;
-        // ÎªÃ¿¸öĞ¡Çø½¨Ò»ĞĞ
+        Debug.Log($"[UI] Building rows for LargeArea {currentAreaName} with {la.subRegions.Length} subRegions");
         foreach (var reg in la.subRegions)
         {
+            Debug.Log($"[UI] SubRegion {reg.name} initial progress={reg.Progress}");
             var go = Instantiate(rowPrefab, contentParent);
             go.name = $"Row_{reg.name}";
             var label = go.transform.Find("Label").GetComponent<TextMeshProUGUI>();
@@ -160,26 +82,35 @@ public class LargeAreaUI : MonoBehaviour
             label.text = reg.name;
             slider.minValue = 0;
             slider.maxValue = reg.maxProgress;
-            slider.value = 0;
+            slider.value = reg.Progress;
             slider.interactable = false;
 
             sliders.Add(slider);
-            reg.OnProgressChanged += v => slider.value = v;
+            reg.OnProgressChanged += (v) =>
+            {
+                Debug.Log($"[UI] OnProgressChanged {reg.name} -> {v}");
+                slider.value = v;
+            };
         }
     }
 
-
     void OnLargeAreaCaptured(string areaName)
     {
+        Debug.Log($"[UI] OnLargeAreaCaptured({areaName}), currentAreaName={currentAreaName}");
         if (areaName != currentAreaName) return;
 
         subRegionPanel.SetActive(false);
 
-        var localFaction = FindObjectOfType<GetReady>().faction;
-        if (localFaction == Faction.Allies)
-            promptText.text = $"¸ÉµÃÆ¯ÁÁ£¡ÒÑÕ¼Áì {areaName}";
-        else
-            promptText.text = $"¸ÃÇøÓòÒÑÊ§ÊÖ£º{areaName}£¬ÏÂÒ»ÇøÓòÖØĞÂ×éÖ¯·ÀÓù";
+        var netId = NetworkClient.connection?.identity;
+        if (netId == null) { Debug.LogError("[UI] æ‰¾ä¸åˆ°æœ¬åœ° NetworkIdentity"); return; }
+        var ready = netId.GetComponent<GetReady>();
+        if (ready == null) { Debug.LogError("[UI] æœ¬åœ°ç©å®¶æ²¡æœ‰ GetReady"); return; }
+
+        var faction = ready.faction;
+        Debug.Log($"[UI] æœ¬åœ°é˜µè¥ = {faction}");
+        promptText.text = faction == Faction.Allies
+            ? $"å¹²å¾—æ¼‚äº®ï¼å·²å é¢† {areaName}"
+            : $"è¯¥åŒºåŸŸå·²å¤±æ‰‹ï¼š{areaName}ï¼Œä¸‹ä¸€åŒºåŸŸé‡æ–°ç»„ç»‡é˜²å¾¡";
 
         promptText.gameObject.SetActive(true);
         Invoke(nameof(HidePrompt), 3f);
@@ -187,6 +118,9 @@ public class LargeAreaUI : MonoBehaviour
 
     void HidePrompt()
     {
+        Debug.Log("[UI] HidePrompt: é‡æ–°æ˜¾ç¤ºé¢æ¿å¹¶åˆ·æ–°");
         promptText.gameObject.SetActive(false);
+        subRegionPanel.SetActive(true);
+        BuildSubRegionRows();
     }
 }

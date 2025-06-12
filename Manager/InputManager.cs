@@ -5,21 +5,21 @@ using UnityEngine;
 
 public class InputManager : MonoBehaviour
 {
-
-
     public static event Action<Vector2> OnDragStart;
     public static event Action<Vector2> OnDrag;
     public static event Action<Vector2> OnDragEnd;
     public static event Action<RaycastHit> OnCommandIssued;
 
+    // 掩码：排除 “Region” 这一层
+    private int commandMask;
 
-    // Start is called before the first frame update
-    void Start()
+    void Awake()
     {
-        
+        // 确保你的 Region Layer 名字跟这里一致
+        commandMask = ~LayerMask.GetMask("Region");
+        Debug.Log($"[InputManager] commandMask = {commandMask}");
     }
 
-    // Update is called once per frame
     void Update()
     {
         // 左键框选
@@ -31,10 +31,16 @@ public class InputManager : MonoBehaviour
         if (Input.GetMouseButtonDown(1))
         {
             var ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-            if (Physics.Raycast(ray, out var hit, 1000f))
+
+            // 带上 commandMask，Region 层的 Collider 会被排除
+            if (Physics.Raycast(ray, out var hit, 1000f, commandMask))
             {
                 Debug.Log($"[InputManager] OnCommandIssued hit `{hit.collider.name}` at {hit.point}");
                 OnCommandIssued?.Invoke(hit);
+            }
+            else
+            {
+                Debug.Log("[InputManager] Raycast hit nothing (Region layer excluded)");
             }
         }
     }
