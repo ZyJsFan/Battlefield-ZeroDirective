@@ -44,58 +44,61 @@ public class LargeAreaUI : MonoBehaviour
 
     void BuildSubRegionRows()
     {
-        Debug.Log("[UI] BuildSubRegionRows called");
+        Debug.Log("[UI] BuildSubRegionRows ENTERED");
+        if (subRegionPanel == null || rowPrefab == null || contentParent == null)
+            Debug.LogError("[UI] BuildSubRegionRows: 有未绑定的引用");
         var mgr = GameFlowManager.Instance;
-        if (mgr == null || mgr.largeAreas == null || mgr.largeAreas.Length == 0)
-        {
-            Debug.LogError("[UI] largeAreas 未配置或为空");
-            return;
-        }
+        if (mgr == null || mgr.largeAreas == null || mgr.largeAreas.Length == 0) return;
         int idx = mgr.currentLargeIndex;
-        Debug.Log($"[UI] currentLargeIndex = {idx}");
-        if (idx < 0 || idx >= mgr.largeAreas.Length)
-        {
-            Debug.LogError("[UI] currentLargeIndex 越界");
-            return;
-        }
-
+        if (idx < 0 || idx >= mgr.largeAreas.Length) return;
         var la = mgr.largeAreas[idx];
-        if (la == null || la.subRegions == null || la.subRegions.Length == 0)
-        {
-            Debug.LogError("[UI] subRegions 未配置或为空");
-            return;
-        }
+        if (la == null || la.subRegions == null || la.subRegions.Length == 0) return;
 
+        // 清空旧行
         foreach (Transform t in contentParent) Destroy(t.gameObject);
         sliders.Clear();
-
         currentAreaName = la.name;
-        Debug.Log($"[UI] Building rows for LargeArea {currentAreaName} with {la.subRegions.Length} subRegions");
-        foreach (var reg in la.subRegions)
+
+        // 手动布局参数
+        float rowHeight = 30f;      // 每行固定高度
+        float spacing = 10f;       // 行间距
+        float startX = 245f;      // 水平偏移
+        float startY = -60f;      // 顶部第一行 y 坐标（锚点参照上边缘）
+
+        // 生成新行并手动排版
+        for (int i = 0; i < la.subRegions.Length; i++)
         {
-            Debug.Log($"[UI] SubRegion {reg.name} initial progress={reg.Progress}");
+            var reg = la.subRegions[i];
             var go = Instantiate(rowPrefab, contentParent);
             go.name = $"Row_{reg.name}";
+
+            var rt = go.GetComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0.5f, 1f);
+            rt.anchorMax = new Vector2(0.5f, 1f);
+            rt.pivot = new Vector2(0.5f, 1f);
+
+            float y = startY - i * (rowHeight + spacing);
+            rt.anchoredPosition = new Vector2(startX, y);
+            rt.sizeDelta = new Vector2(rt.sizeDelta.x, rowHeight);
+
             var label = go.transform.Find("Label").GetComponent<TextMeshProUGUI>();
             var slider = go.transform.Find("Slider").GetComponent<Slider>();
 
             label.text = reg.name;
             slider.minValue = 0;
             slider.maxValue = reg.maxProgress;
-            slider.value = reg.Progress;
+            slider.value = 0;
             slider.interactable = false;
 
             sliders.Add(slider);
-            reg.OnProgressChanged += (v) =>
-            {
-                Debug.Log($"[UI] OnProgressChanged {reg.name} -> {v}");
-                slider.value = v;
-            };
+            reg.OnProgressChanged += v => slider.value = v;
         }
     }
 
     void OnLargeAreaCaptured(string areaName)
     {
+        Debug.Log($"[UI] OnLargeAreaCaptured({areaName}), currentAreaName={currentAreaName}");
+        Debug.Log($"[UI] subRegionPanel={(subRegionPanel == null ? "NULL" : "OK")}, promptText={(promptText == null ? "NULL" : "OK")}");
         Debug.Log($"[UI] OnLargeAreaCaptured({areaName}), currentAreaName={currentAreaName}");
         if (areaName != currentAreaName) return;
 
