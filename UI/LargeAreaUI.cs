@@ -10,28 +10,32 @@ public class LargeAreaUI : MonoBehaviour
     public static LargeAreaUI Instance { get; private set; }
 
     [Header("UI 引用")]
-    public GameObject subRegionPanel;
-    public GameObject rowPrefab;
-    public RectTransform contentParent;
-    public Text promptText;
+    public GameObject subRegionPanel;    // 面板根节点
+    public GameObject rowPrefab;         // 子区域行 Prefab
+    public RectTransform contentParent;  // 行的父级 RectTransform
+    public Text promptText;              // 提示文字
 
     private List<Slider> sliders = new();
-    private string currentAreaName;
     private Action onGameStartHandler;
+
+    // 客户端 UI 自己维护的索引，初始 0
+    private int uiCurrentIndex = 0;
 
     void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
 
-        Debug.Log("[UI] Awake: 订阅 OnGameStartEvent & OnLargeAreaCapturedUI");
+        // 1. 游戏开始时，重置 uiIndex 并显示第 0 区
         onGameStartHandler = () =>
         {
-            Debug.Log("[UI] OnGameStartEvent: 显示面板并构建行");
+            uiCurrentIndex = 0;
             subRegionPanel.SetActive(true);
-            BuildSubRegionRows();
+            BuildSubRegionRows(uiCurrentIndex);
         };
         GameFlowManager.OnGameStartEvent += onGameStartHandler;
+
+        // 2. 大区完成时，弹提示并安排下一区
         GameFlowManager.OnLargeAreaCapturedUI += OnLargeAreaCaptured;
     }
 
@@ -42,88 +46,125 @@ public class LargeAreaUI : MonoBehaviour
         GameFlowManager.OnLargeAreaCapturedUI -= OnLargeAreaCaptured;
     }
 
-    void BuildSubRegionRows()
+    /// <summary>
+    /// 根据 uiCurrentIndex 构建子区域行
+    /// </summary>
+    public void BuildSubRegionRows(int index)
     {
-        Debug.Log("[UI] BuildSubRegionRows ENTERED");
-        if (subRegionPanel == null || rowPrefab == null || contentParent == null)
-            Debug.LogError("[UI] BuildSubRegionRows: 有未绑定的引用");
-        var mgr = GameFlowManager.Instance;
-        if (mgr == null || mgr.largeAreas == null || mgr.largeAreas.Length == 0) return;
-        int idx = mgr.currentLargeIndex;
-        if (idx < 0 || idx >= mgr.largeAreas.Length) return;
-        var la = mgr.largeAreas[idx];
-        if (la == null || la.subRegions == null || la.subRegions.Length == 0) return;
+        Debug.Log($"[UI] BuildSubRegionRows ENTERED idx={index}");
+
+        // 非法索引保护
+        var gm = GameFlowManager.Instance;
+        if (gm == null || gm.largeAreas == null)
+        {
+            Debug.LogError("[UI] GameFlowManager.largeAreas 未配置");
+            return;
+        }
+        if (index < 0 || index >= gm.largeAreas.Length)
+        {
+            Debug.LogError($"[UI] uiCurrentIndex 越界: {index}");
+            return;
+        }
+
+        var la = gm.largeAreas[index];
+        if (la == null || la.subRegions == null || la.subRegions.Length == 0)
+        {
+            Debug.LogError("[UI] 选中大区或其 subRegions 未配置");
+            return;
+        }
 
         // 清空旧行
         foreach (Transform t in contentParent) Destroy(t.gameObject);
         sliders.Clear();
-        currentAreaName = la.name;
 
-        // 手动布局参数
-        float rowHeight = 30f;      // 每行固定高度
-        float spacing = 10f;       // 行间距
-        float startX = 245f;      // 水平偏移
-        float startY = -60f;      // 顶部第一行 y 坐标（锚点参照上边缘）
+        Debug.Log($"[UI] Building rows for LargeArea {la.name} with {la.subRegions.Length} subRegions");
 
-        // 生成新行并手动排版
+        // 手动布局
+        float rowHeight = 30f, spacing = 10f, startX = 245f, startY = -60f;
         for (int i = 0; i < la.subRegions.Length; i++)
         {
             var reg = la.subRegions[i];
+            Debug.Log($"[UI] SubRegion {reg.name} init progress={reg.Progress}");
+
+            // 实例化一行
             var go = Instantiate(rowPrefab, contentParent);
             go.name = $"Row_{reg.name}";
-
             var rt = go.GetComponent<RectTransform>();
             rt.anchorMin = new Vector2(0.5f, 1f);
             rt.anchorMax = new Vector2(0.5f, 1f);
             rt.pivot = new Vector2(0.5f, 1f);
-
             float y = startY - i * (rowHeight + spacing);
             rt.anchoredPosition = new Vector2(startX, y);
             rt.sizeDelta = new Vector2(rt.sizeDelta.x, rowHeight);
 
+            // Label & Slider
             var label = go.transform.Find("Label").GetComponent<TextMeshProUGUI>();
             var slider = go.transform.Find("Slider").GetComponent<Slider>();
-
             label.text = reg.name;
             slider.minValue = 0;
             slider.maxValue = reg.maxProgress;
-            slider.value = 0;
+            slider.value = reg.Progress;
             slider.interactable = false;
 
             sliders.Add(slider);
-            reg.OnProgressChanged += v => slider.value = v;
         }
     }
 
+    /// <summary>
+    /// 当服务器通知大区占领完成时调用
+    /// </summary>
     void OnLargeAreaCaptured(string areaName)
     {
-        Debug.Log($"[UI] OnLargeAreaCaptured({areaName}), currentAreaName={currentAreaName}");
-        Debug.Log($"[UI] subRegionPanel={(subRegionPanel == null ? "NULL" : "OK")}, promptText={(promptText == null ? "NULL" : "OK")}");
-        Debug.Log($"[UI] OnLargeAreaCaptured({areaName}), currentAreaName={currentAreaName}");
-        if (areaName != currentAreaName) return;
+        Debug.Log($"[UI] OnLargeAreaCaptured({areaName}), uiCurrentIndex={uiCurrentIndex}");
 
+        // 隐藏子区面板
         subRegionPanel.SetActive(false);
 
-        var netId = NetworkClient.connection?.identity;
-        if (netId == null) { Debug.LogError("[UI] 找不到本地 NetworkIdentity"); return; }
-        var ready = netId.GetComponent<GetReady>();
-        if (ready == null) { Debug.LogError("[UI] 本地玩家没有 GetReady"); return; }
+        // 读取本地阵营
+        var ready = NetworkClient.connection?.identity?.GetComponent<GetReady>();
+        var faction = ready != null ? ready.faction : Faction.Allies;
 
-        var faction = ready.faction;
-        Debug.Log($"[UI] 本地阵营 = {faction}");
+        // 弹提示
         promptText.text = faction == Faction.Allies
             ? $"干得漂亮！已占领 {areaName}"
             : $"该区域已失手：{areaName}，下一区域重新组织防御";
-
         promptText.gameObject.SetActive(true);
+
+        // 3 秒后切换到下一区
         Invoke(nameof(HidePrompt), 3f);
     }
 
+    /// <summary>
+    /// 隐藏提示后，推进 uiCurrentIndex 并重建面板
+    /// </summary>
     void HidePrompt()
     {
-        Debug.Log("[UI] HidePrompt: 重新显示面板并刷新");
+        Debug.Log($"[UI] HidePrompt (oldIndex={uiCurrentIndex})");
+
         promptText.gameObject.SetActive(false);
+
+        // 推进本地 UI 索引（不要碰服务器 currentLargeIndex）
+        uiCurrentIndex++;
+        Debug.Log($"[UI] uiCurrentIndex -> {uiCurrentIndex}");
+
+        // 重建并显示
         subRegionPanel.SetActive(true);
-        BuildSubRegionRows();
+        BuildSubRegionRows(uiCurrentIndex);
+    }
+
+    void Update()
+    {
+        // 面板打开时，每帧拉最新进度，保证滑条动起来
+        if (!subRegionPanel.activeSelf) return;
+
+        var gm = GameFlowManager.Instance;
+        if (gm == null || gm.largeAreas == null) return;
+        if (uiCurrentIndex < 0 || uiCurrentIndex >= gm.largeAreas.Length) return;
+
+        var la = gm.largeAreas[uiCurrentIndex];
+        for (int i = 0; i < sliders.Count && i < la.subRegions.Length; i++)
+        {
+            sliders[i].value = la.subRegions[i].Progress;
+        }
     }
 }

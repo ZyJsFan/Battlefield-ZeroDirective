@@ -72,6 +72,12 @@ public class GameFlowManager : NetworkBehaviour
     {
         Debug.Log("[Client] RpcGameStart received");
         OnGameStartEvent?.Invoke();
+
+               if (LargeAreaUI.Instance != null)
+                   {
+            LargeAreaUI.Instance.subRegionPanel.SetActive(true);
+            LargeAreaUI.Instance.BuildSubRegionRows(GameFlowManager.Instance.currentLargeIndex);
+        }
     }
 
     [Server]
@@ -102,6 +108,13 @@ public class GameFlowManager : NetworkBehaviour
     {
         Debug.Log($"[Client] RpcFireOnLargeAreaCaptured received: {areaName}");
         OnLargeAreaCapturedUI?.Invoke(areaName);
+
+        if (LargeAreaUI.Instance != null)
+                   {
+                       // 重新把下一区的 rows 给建起来
+            LargeAreaUI.Instance.subRegionPanel.SetActive(true);
+            LargeAreaUI.Instance.BuildSubRegionRows(GameFlowManager.Instance.currentLargeIndex);
+        }
     }
 
     [ClientRpc]

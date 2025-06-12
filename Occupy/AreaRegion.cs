@@ -6,102 +6,91 @@ using UnityEditor;
 
 public class AreaRegion : NetworkBehaviour
 {
-    [Header("区域设置")]
+    [Header("区域配置")]
     public float captureRate = 10f;
     public float recaptureRate = 15f;
     public float maxProgress = 100f;
 
-    /// <summary>进度变化事件（传入当前进度）</summary>
-    public event Action<float> OnProgressChanged;
-    /// <summary>首次达到 maxProgress 时触发（由进攻方捕获）</summary>
-    public event Action<AreaRegion, Faction> OnCaptured;
-    /// <summary>首次从 maxProgress 回退到 0 时触发（由防守方复原）</summary>
-    public event Action<AreaRegion, Faction> OnLost;
+    // —— 这是网络同步的进度变量 —— 
+    [SyncVar(hook = nameof(OnNetworkProgressChanged))]
+    private float progressVar = 0f;
 
-    private float progress = 0f;
     private bool wasCaptured = false;
     private HashSet<Selectable> inAllies = new();
     private HashSet<Selectable> inAxis = new();
 
-    /// <summary>当前进度，用于 UI 初始化</summary>
-    public float Progress => progress;
+    /// <summary>
+    /// UI 拉取的进度来源。现在读的是同步变量 progressVar。
+    /// </summary>
+    public float Progress => progressVar;
 
 
-       public void ResetState()
-   {
-       progress = 0f;
-       wasCaptured = false;
-       inAllies.Clear();
-       inAxis.Clear();
-       Debug.Log($"[AreaRegion:{name}] ResetState: progress=0, wasCaptured=false");
-      // 如果 UI 已经订阅了事件，主动推一遍进度（对应 BuildSubRegionRows 初始化）
-       OnProgressChanged?.Invoke(progress);
-  }
-
-void OnTriggerEnter(Collider other)
+    public void ResetState()
+    {
+        progressVar = 0f;
+        wasCaptured = false;
+        inAllies.Clear();
+        inAxis.Clear();
+        Debug.Log($"[AreaRegion:{name}] ResetState called");
+        // 如果 UI 已绑定 OnProgressChanged 的话，可以主动推一次
+        // OnProgressChanged?.Invoke(progress);
+    }
+    void OnTriggerEnter(Collider other)
     {
         if (!isServer) return;
         if (!other.TryGetComponent<Selectable>(out var sel)) return;
 
-        var conn = sel.GetComponent<NetworkIdentity>().connectionToClient;
-        var faction = GameFlowManager.Instance.GetFactionForConnection(conn);
+        var faction = GameFlowManager.Instance
+                       .GetFactionForConnection(sel.GetComponent<NetworkIdentity>().connectionToClient);
 
-        if (faction == Faction.Allies)
-        {
-            inAllies.Add(sel);
-            Debug.Log($"[AreaRegion:{name}] Allies entered, Att={inAllies.Count}, Def={inAxis.Count}");
-        }
-        else if (faction == Faction.Axis)
-        {
-            inAxis.Add(sel);
-            Debug.Log($"[AreaRegion:{name}] Axis entered,  Att={inAllies.Count}, Def={inAxis.Count}");
-        }
+        if (faction == Faction.Allies) { inAllies.Add(sel); Debug.Log($"[AreaRegion:{name}] Allies entered"); }
+        else if (faction == Faction.Axis) { inAxis.Add(sel); Debug.Log($"[AreaRegion:{name}] Axis entered"); }
     }
 
     void OnTriggerExit(Collider other)
     {
         if (!isServer) return;
-        if (other.TryGetComponent<Selectable>(out var sel))
-        {
-            if (inAllies.Remove(sel))
-                Debug.Log($"[AreaRegion:{name}] Allies exited,  Att={inAllies.Count}, Def={inAxis.Count}");
-            if (inAxis.Remove(sel))
-                Debug.Log($"[AreaRegion:{name}] Axis exited,   Att={inAllies.Count}, Def={inAxis.Count}");
-        }
+        if (!other.TryGetComponent<Selectable>(out var sel)) return;
+
+        if (inAllies.Remove(sel)) Debug.Log($"[AreaRegion:{name}] Allies exited");
+        if (inAxis.Remove(sel)) Debug.Log($"[AreaRegion:{name}] Axis exited");
     }
 
-    /// <summary>由 AreaControlSystem 每帧调用，累加或减少进度</summary>
+    /// <summary>
+    /// 服务器端每帧调用，累加或减少进度，然后把新值写给 progressVar。
+    /// </summary>
+    [ServerCallback]
     public void UpdateProgress(float dt)
     {
-        int atk = inAllies.Count, def = inAxis.Count;
-        Debug.Log($"[AreaRegion:{name}] BeforeUpdate: Att={atk}, Def={def}, Progress={progress:F1}");
+        if (maxProgress <= 0f) return;  // 防止 0 导致一开始就触发
 
+        int atk = inAllies.Count, def = inAxis.Count;
         float delta = atk > def
             ? captureRate * dt
             : (def > atk ? -recaptureRate * dt : 0f);
-        float newProgress = Mathf.Clamp(progress + delta, 0f, maxProgress);
 
-        if (Mathf.Abs(newProgress - progress) > 0.01f)
-        {
-            progress = newProgress;
-            Debug.Log($"[AreaRegion:{name}] ProgressChanged -> {progress:F1}");
-            OnProgressChanged?.Invoke(progress);
-        }
-        else progress = newProgress;
+        float newProg = Mathf.Clamp(progressVar + delta, 0f, maxProgress);
+        progressVar = newProg;  // 赋值给 SyncVar，Mirror 会自动推给客户端
 
-        Debug.Log($"[AreaRegion:{name}] AfterUpdate:  Att={atk}, Def={def}, Progress={progress:F1}");
-
-        if (!wasCaptured && progress >= maxProgress)
+        // 只在服务器端本地检测“满值”来触发捕获
+        if (!wasCaptured && newProg >= maxProgress)
         {
             wasCaptured = true;
             Debug.Log($"[AreaRegion:{name}] >>> OnCaptured!");
             OnCaptured?.Invoke(this, Faction.Allies);
         }
-        else if (wasCaptured && progress <= 0f)
-        {
-            wasCaptured = false;
-            Debug.Log($"[AreaRegion:{name}] >>> OnLost!");
-            OnLost?.Invoke(this, Faction.Allies);
-        }
     }
+
+    /// <summary>
+    /// 当进度通过网络推给客户端时（客户端触发）会调用这里
+    /// </summary>
+    void OnNetworkProgressChanged(float oldVal, float newVal)
+    {
+        // 可选：打个日志确认客户端收到了
+        Debug.Log($"[AreaRegion:{name}] [Client] Progress updated → {newVal}");
+    }
+
+    // 你原来的事件，UI 可以继续订阅
+    public event Action<AreaRegion, Faction> OnCaptured;
+    public event Action<AreaRegion, Faction> OnLost;
 }
