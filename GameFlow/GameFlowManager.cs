@@ -12,6 +12,17 @@ public class GameFlowManager : NetworkBehaviour
 
     public static event Action OnGameStartEvent;
 
+    [Header("区域争夺设置")]
+    public AreaRegion[] contestedRegions;
+    public int alliesWinCount = 2;
+    public int axisWinCount = 2;
+
+    // ← 新增：记录每个客户端属于哪个阵营
+    private Dictionary<NetworkConnectionToClient, Faction> connFaction =
+        new Dictionary<NetworkConnectionToClient, Faction>();
+
+    int alliesCaptured = 0, axisCaptured = 0;
+
     void Awake()
     {
         if (Instance == null) Instance = this;
@@ -41,6 +52,19 @@ public class GameFlowManager : NetworkBehaviour
         shuffled[0].faction = Faction.Allies;
         shuffled[1].faction = Faction.Axis;
         RpcGameStart();
+
+        foreach (var player in players) // players: List<GetReady>
+        {
+            var conn = player.connectionToClient;
+            connFaction[conn] = player.faction;
+        }
+
+        // 注册区域事件
+        foreach (var r in contestedRegions)
+        {
+            r.OnCaptured += HandleCaptured;
+            r.OnLost += HandleLost;
+        }
     }
 
     [ClientRpc]
@@ -52,4 +76,42 @@ public class GameFlowManager : NetworkBehaviour
 
     // 如果需要，GameFlowManager 也可以在 OnStartServer 注册自身到 RTSNetworkManager
     public void InitializeOnServer() { /* optional */ }
+
+
+
+
+    [Server]
+    public Faction GetFactionForConnection(NetworkConnectionToClient conn)
+    {
+        return connFaction.TryGetValue(conn, out var f) ? f : Faction.None;
+    }
+
+    [Server]
+    void HandleCaptured(AreaRegion region, Faction byFaction)
+    {
+        if (byFaction == Faction.Allies) alliesCaptured++;
+        else axisCaptured++;
+        CheckVictory();
+    }
+    [Server]
+    void HandleLost(AreaRegion region, Faction byFaction)
+    {
+        if (byFaction == Faction.Allies) alliesCaptured--;
+        else axisCaptured--;
+        CheckVictory();
+    }
+    [Server]
+    void CheckVictory()
+    {
+        if (alliesCaptured >= alliesWinCount) RpcGameOver(Faction.Allies);
+        else if (axisCaptured >= axisWinCount) RpcGameOver(Faction.Axis);
+    }
+
+    [ClientRpc]
+    void RpcGameOver(Faction winner)
+    {
+        Debug.Log($"Game Over! Winner = {winner}");
+        // TODO: 显示胜利/失败 UI
+    }
+
 }
