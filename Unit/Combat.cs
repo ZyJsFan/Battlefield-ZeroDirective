@@ -20,7 +20,7 @@ public class Combat : MonoBehaviour
     [Tooltip("远程攻击的冷却")]
     public float rangedInterval = 1.5f;         // ← 新增
 
-    private GameObject target;
+    public GameObject target;
     private float lastAttackTime;
     private NavMeshAgent agent;
 

@@ -126,8 +126,8 @@ public class LargeAreaUI : MonoBehaviour
 
         // 弹提示
         promptText.text = faction == Faction.Allies
-            ? $"干得漂亮！已占领 {areaName}"
-            : $"该区域已失手：{areaName}，下一区域重新组织防御";
+            ? $"Great job! {areaName} has been captured."
+            : $"Area {areaName} has fallen. Reorganize your defenses for the next sector.";
         promptText.gameObject.SetActive(true);
 
         // 3 秒后切换到下一区

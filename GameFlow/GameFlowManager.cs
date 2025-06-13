@@ -16,6 +16,16 @@ public class GameFlowManager : NetworkBehaviour
     [Header("按顺序排列的所有大区域")]
     public LargeArea[] largeAreas;
 
+    [Header("倒计时设置")]
+    public float totalTime = 30f;            // 比如 300 秒
+    [SyncVar(hook = nameof(OnTimerChanged))]
+    private float timeRemaining;
+
+    /// <summary>
+    /// 任何想显示倒计时的 UI，订阅这个事件
+    /// </summary>
+    public static event Action<float> OnTimerUpdated;
+
     private readonly List<GetReady> players = new();
     private Dictionary<NetworkConnectionToClient, Faction> connFaction = new();
     public int currentLargeIndex = 0;
@@ -65,6 +75,9 @@ public class GameFlowManager : NetworkBehaviour
         RpcGameStart();
         if (largeAreas != null && largeAreas.Length > 0)
             SubscribeLargeArea(0);
+
+        timeRemaining = totalTime;
+        InvokeRepeating(nameof(TickTimer), 1f, 1f);
     }
 
     [ClientRpc]
@@ -121,9 +134,33 @@ public class GameFlowManager : NetworkBehaviour
     void RpcGameOver(Faction winner)
     {
         Debug.Log($"[Client] RpcGameOver Winner = {winner}");
+        if (EndGameUI.Instance != null)
+        {
+            EndGameUI.Instance.ShowEndScreen(winner);
+        }
     }
 
     [Server]
     public Faction GetFactionForConnection(NetworkConnectionToClient conn)
         => connFaction.TryGetValue(conn, out var f) ? f : Faction.None;
+
+
+
+    [Server]
+    void TickTimer()
+    {
+        timeRemaining = Mathf.Max(0f, timeRemaining - 1f);
+        if (timeRemaining <= 0f)
+        {
+            CancelInvoke(nameof(TickTimer));
+            // 倒计时结束，防守方（Axis）胜利
+            RpcGameOver(Faction.Axis);
+        }
+    }
+
+    void OnTimerChanged(float oldVal, float newVal)
+    {
+        Debug.Log($"[Timer] {oldVal} → {newVal}");
+        OnTimerUpdated?.Invoke(newVal);
+    }
 }

@@ -26,9 +26,8 @@ public class Health : NetworkBehaviour
             NetworkServer.Destroy(gameObject);
     }
 
-    // SyncVar 钩子：血量每次改变都会回调
-    private void OnHpChanged(float oldHp, float newHp)
+    public void OnHpChanged(float oldHp, float newHp)
     {
-        // nothing here or call to UI if needed
+        // for state machine to call
     }
 }
